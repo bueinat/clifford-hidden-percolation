@@ -1,0 +1,11 @@
+matplotlib
+ipywidgets
+pyzx
+xml
+re
+numpy
+lxml
+math
+pandas
+networkx
+tqdm
