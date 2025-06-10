@@ -1,7 +1,6 @@
 matplotlib
 ipywidgets
 pyzx
-xml
 regex
 numpy
 lxml
