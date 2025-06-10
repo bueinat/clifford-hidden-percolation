@@ -1,11 +1,9 @@
 matplotlib
 ipywidgets
 pyzx
-xml
-re
+regex
 numpy
 lxml
-math
 pandas
 networkx
 tqdm
