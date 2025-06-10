@@ -169,7 +169,7 @@ if st.session_state.calculation_done:
         current_y_offset = st.session_state.y_offset
         
         # הצגת אינדקס הגרף הנוכחי
-        st.info(f"{current_svg_name.split('_')[-1]} rule {st.session_state.current_plot_index + 1} out of {num_svgs} total rules")
+        st.info(f"{current_svg_name.split('_')[1]} simplification rule {st.session_state.current_plot_index + 1} out of {num_svgs} total simplification steps")
         # הסגנון 'transform' מאפשר לשלב 'scale' ו-'translate'
         # חשוב שה-translate יבוא אחרי ה-scale כדי להזיז את התוכן *לאחר* שהוגדל.
         # כדי להבטיח ביצועים טובים יותר, ניתן להוסיף גם translateZ(0) או translate3d(0,0,0)
