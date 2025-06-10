@@ -1,28 +1,22 @@
 # app.py
 import streamlit as st
-# מייבאים את הפונקציה המעודכנת מקובץ my_script
-from my_script import perform_calculation_and_generate_plots
+from back_code import perform_calculation_and_generate_plots
 import streamlit.components.v1 as components # נחוץ להצגת SVG מתוך מחרוזת
-
-import numpy as np
-import wcore as core
 
 # הגדרות כלליות לדף
 st.set_page_config(
-    page_title="אפליקציה עם גרפים ותהליך",
+    page_title="ZX Simplification Demonstration",
     layout="centered", # אפשרויות: "centered" או "wide"
     initial_sidebar_state="auto"
 )
 
-st.title("📊 אפליקציה קטנה: חישוב עם דוחות וגרפים")
+st.title("ZX Simplification Demonstration App")
 st.markdown("""
-ברוכים הבאים לאפליקציה!
-בחרו את הפרמטרים `p` ו-`r` באמצעות המחוונים, לחצו על כפתור "הרץ/י חישוב"
-וצפו ביומן התהליך ובגרפים שנוצרו.
+This is a small application where you can see the simplification process of random circuits generated according to the model defined in [this paper](https://arxiv.org/abs/2502.13211), according to the chosen parameters. 
 """)
 
 # 1. מחוונים (Sliders) וכפתור הרצה
-st.header("⚙️ הגדרת פרמטרים")
+st.header("⚙️ Set Parameters")
 
 # הגדרת ערכי ברירת מחדל למחוונים
 default_p = 0.5
@@ -30,30 +24,30 @@ default_r = 0.2
 default_N = 12
 
 p_value = st.slider(
-    "בחר/י ערך עבור p (פרמטר ראשון)",
+    "p",
     min_value=0.0,
     max_value=1.0,
     value=default_p,
     step=0.05,
-    help="ערך זה ישפיע על קנה המידה של הגרפים."
+    help="measurement probability"
 )
 
 r_value = st.slider(
-    "בחר/י ערך עבור r (פרמטר שני)",
+    "r",
     min_value=0.0,
     max_value=1.0,
     value=default_r,
     step=0.05,
-    help="ערך זה ישפיע גם הוא על צורת הגרפים, ומשמש לחלוקה."
+    help="cnot probability"
 )
 
 N_value = st.slider(
-    "בחר/י ערך עבור N (פרמטר שלישי)",
+    "N",
     min_value=8,
     max_value=80,
     value=default_N,
     step=4,
-    help="ערך זה ישפיע גם הוא על צורת הגרפים, ומשמש לחלוקה."
+    help="number of qubits. note this highly affects run time"
 )
 
 # שימוש ב-st.cache_data כדי למנוע הרצה מחדש של החישוב והגרפים בכל פעם שנעשה שינוי לא רלוונטי
@@ -77,46 +71,47 @@ if 'calculation_logs' not in st.session_state:
     st.session_state.calculation_logs = ""
 if 'final_calculated_result' not in st.session_state:
     st.session_state.final_calculated_result = None
+if 'zoom_level' not in st.session_state:
+    st.session_state.zoom_level = 1.0 # רמת זום התחלתית (1.0 = 100%)
+if 'x_offset' not in st.session_state:
+    st.session_state.x_offset = 0 # מיקום אופקי התחלתי (0 = מרכז)
+if 'y_offset' not in st.session_state:
+    st.session_state.y_offset = 0 # מיקום אנכי התחלתי (0 = מרכז)
+    
+# פונקציות לטיפול בזום
+def zoom_in():
+    st.session_state.zoom_level = min(st.session_state.zoom_level + 0.1, 2.0) # מקסימום זום 200%
 
-if st.button("🚀 הרץ/י חישוב", type="primary"):
+def zoom_out():
+    st.session_state.zoom_level = max(st.session_state.zoom_level - 0.1, 0.5) # מינימום זום 50%
+
+if st.button("🚀 Run", type="primary"):
     # ויזואליזציה של תהליך
-    with st.spinner('מבצע חישוב, מייצר יומן תהליך ויוצר גרפים...'):
+    with st.spinner('Generating circuit, simplifying, and creating plots'):
         try:
-            # בדיקה למניעת חלוקה באפס ב-r
-            if abs(r_value) < 0.001: # אם r קרוב מאוד לאפס
-                st.error("🚫 שגיאה: הפרמטר 'r' קרוב לאפס. אנא בחר/י ערך שונה מ-0 כדי למנוע חלוקה באפס.")
-                st.session_state.calculation_done = False
-            else:
-                # הרצת החישוב דרך הפונקציה המכוסה ב-cache
-                logs, svg_plots, final_result = run_and_cache_calculation(N_value, p_value, r_value)
+            logs, svg_plots, svg_names, final_result = run_and_cache_calculation(N_value, p_value, r_value)
 
-                st.session_state.calculation_logs = logs
-                st.session_state.all_svg_plots = svg_plots
-                st.session_state.final_calculated_result = final_result
-                st.session_state.current_plot_index = 0 # איפוס האינדקס לגרף הראשון לאחר חישוב חדש
-                st.session_state.calculation_done = True
+            st.session_state.calculation_logs = logs
+            st.session_state.all_svg_plots = svg_plots
+            st.session_state.all_svg_names = svg_names
+            st.session_state.final_calculated_result = final_result
+            st.session_state.current_plot_index = 0 # איפוס האינדקס לגרף הראשון לאחר חישוב חדש
+            st.session_state.calculation_done = True
 
         except Exception as e:
-            st.error(f"❌ אירעה שגיאה בלתי צפויה במהלך ההרצה: {e}")
+            st.error(f"❌ During the run, unexpected error occured {e}")
             st.session_state.calculation_done = False
 
 # הצגת תוצאות לאחר סיום החישוב
 if st.session_state.calculation_done:
-    # 2. חלון המציג את פלט תהליך החישוב (print statements)
-    st.subheader("📝 יומן תהליך החישוב:")
-    st.code(st.session_state.calculation_logs, language='text') # הצגת הפלטים כקוד טקסט רגיל
+    st.success(f"✅ The simplification was successful! now presenting the simplification steps below")
 
-    if st.session_state.final_calculated_result is not None and not np.isnan(st.session_state.final_calculated_result):
-        st.success(f"✅ החישוב הסתיים בהצלחה! התוצאה הסופית שחושבה היא: **{st.session_state.final_calculated_result:.2f}**")
-    else:
-        st.error("⚠️ החישוב הסתיים עם תוצאה לא חוקית (ייתכן בגלל שגיאה פנימית).")
-    
     # 3. סלייד-שואו של תמונות SVG כתוצאה מהחישוב
     if st.session_state.all_svg_plots:
-        st.subheader("📈 גרפים כתוצאה מהחישוב:")
+        st.subheader("📈 Simplification Steps Plots")
         num_svgs = len(st.session_state.all_svg_plots)
         
-        # פונקציות לניווט בין הגרפים
+    # פונקציות לניווט בין הגרפים
         def next_plot():
             if st.session_state.current_plot_index < num_svgs - 1:
                 st.session_state.current_plot_index += 1
@@ -124,24 +119,90 @@ if st.session_state.calculation_done:
         def prev_plot():
             if st.session_state.current_plot_index > 0:
                 st.session_state.current_plot_index -= 1
-        
+    
         # יצירת כפתורי הניווט
-        col1, col2, col3 = st.columns([1, 2, 1]) # כדי למרכז את הכפתורים
-        with col1:
-            if st.button("⬅️ קודם", on_click=prev_plot, disabled=(st.session_state.current_plot_index == 0)):
-                pass # הפעולה מתרחשת ב-on_click
-        with col3:
-            if st.button("הבא ➡️", on_click=next_plot, disabled=(st.session_state.current_plot_index == num_svgs - 1)):
-                pass # הפעולה מתרחשת ב-on_click
+        # יצירת כפתורי הניווט והזום בשורה אחת
+        col_prev, col_zoom_in, col_zoom_out, col_next = st.columns([1, 1, 1, 1])
+        
+        with col_prev:
+            st.button("⬅️ Previous", on_click=prev_plot, disabled=(st.session_state.current_plot_index == 0))
+        with col_zoom_in:
+            st.button("➕ Zoom In", on_click=zoom_in, disabled=(st.session_state.zoom_level >= 2.0))
+        with col_zoom_out:
+            st.button("➖ Zoom Out", on_click=zoom_out, disabled=(st.session_state.zoom_level <= 0.5))
+        with col_next:
+            st.button("Next ➡️", on_click=next_plot, disabled=(st.session_state.current_plot_index == num_svgs - 1))
+        
+
+        # מחווני היסט (Panning)
+        st.write("---") # קו מפריד
+        st.markdown("**Graph Panning Controls**")
+        col_offset_x, col_offset_y = st.columns(2)
+        with col_offset_x:
+            st.session_state.x_offset = st.slider(
+                "Horzontal Offset (X)",
+                min_value=-200, # טווח היסט במרחק פיקסלים
+                max_value=200,
+                value=st.session_state.x_offset,
+                step=10,
+                key="x_offset_slider", # מזהה ייחודי למחוון
+                help="drag the plot display left / right"
+            )
+        with col_offset_y:
+            st.session_state.y_offset = st.slider(
+                "Vertical Offset (Y)",
+                min_value=-200,
+                max_value=200,
+                value=st.session_state.y_offset,
+                step=10,
+                key="y_offset_slider", # מזהה ייחודי למחוון
+                help="drag the plot display upt / down"
+            )
+                
+
+                
+        # --- עטיפת ה-SVG עם רקע לבן, פונקציונליות זום והיסט ---
+        current_svg_content = st.session_state.all_svg_plots[st.session_state.current_plot_index]
+        current_svg_name = st.session_state.all_svg_names[st.session_state.current_plot_index]
+        current_zoom_level = st.session_state.zoom_level
+        current_x_offset = st.session_state.x_offset
+        current_y_offset = st.session_state.y_offset
         
         # הצגת אינדקס הגרף הנוכחי
-        st.info(f"מציג גרף {st.session_state.current_plot_index + 1} מתוך {num_svgs}")
-        
+        st.info(f"{current_svg_name.split('_')[-1]} rule {st.session_state.current_plot_index + 1} out of {num_svgs} total rules")
+        # הסגנון 'transform' מאפשר לשלב 'scale' ו-'translate'
+        # חשוב שה-translate יבוא אחרי ה-scale כדי להזיז את התוכן *לאחר* שהוגדל.
+        # כדי להבטיח ביצועים טובים יותר, ניתן להוסיף גם translateZ(0) או translate3d(0,0,0)
+        # שמפעילים האצת חומרה.
         html_content = f"""
-        <div style="background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center;">
-            {st.session_state.all_svg_plots[st.session_state.current_plot_index]}
+        <div id="svg-wrapper" style="
+            background-color: #ffffff; /* רקע לבן לאזור התצוגה */
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* מונע גלילה בתוך ה-div בזמן זום */
+            width: 100%;
+            height: 500px; /* גובה קבוע לעטיפה החיצונית */
+            position: relative;
+        ">
+            <div id="zoomable-svg-container" style="
+                transform: scale({current_zoom_level}) translate({current_x_offset}px, {current_y_offset}px) translateZ(0);
+                transform-origin: center center; /* הזום יתבצע ממרכז הגרף */
+                transition: transform 0.2s ease-out; /* אנימציית זום/היסט חלקה */
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                width: 100%;
+                height: 100%;
+            ">
+                {current_svg_content}
+            </div>
         </div>
         """
+        # --- סוף עטיפת ה-SVG ---
 
         # הצגת ה-SVG הנבחר באמצעות st.components.v1.html
         # זה מאפשר להציג מחרוזות HTML/SVG גולמיות
@@ -151,147 +212,14 @@ if st.session_state.calculation_done:
             scrolling=False # מונע גלילה בתוך אזור ה-HTML
         )
     else:
-        st.info("ℹ️ לא נוצרו גרפים בחישוב זה.")
+        st.info("ℹ️ No plots were made")
 
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #888; font-size: 0.9em;">
-  אפליקציה זו פותחה באמצעות Streamlit Python.
+  This app was developed using Streamlit Python.
   <br>
-  ניתן למצוא את קוד המקור ב-GitHub (קישור יתווסף לאחר פריסה).
+   Source code accessible in <a href="https://github.com/bueinat/clifford-hidden-percolation/tree/main/widget" target="_blank" rel="noopener noreferrer" style="color: #F63366; text-decoration: none;">GitHub</a>
 </div>
 """, unsafe_allow_html=True)
-
-
-# # הגדרות כלליות לדף
-# st.set_page_config(
-#     page_title="אפליקציה עם גרפים ותהליך",
-#     layout="centered", # אפשרויות: "centered" או "wide"
-#     initial_sidebar_state="auto"
-# )
-
-# st.title("📊 אפליקציה קטנה: חישוב עם דוחות וגרפים")
-# st.markdown("""
-# ברוכים הבאים לאפליקציה!
-# בחרו את הפרמטרים `p` ו-`r` באמצעות המחוונים, לחצו על כפתור "הרץ/י חישוב"
-# וצפו ביומן התהליך ובגרפים שנוצרו.
-# """)
-
-# # 1. מחוונים (Sliders) וכפתור הרצה
-# st.header("⚙️ הגדרת פרמטרים")
-
-# # הגדרת ערכי ברירת מחדל למחוונים
-# default_p = 5.0
-# default_r = 2.0
-
-# p_value = st.slider(
-#     "בחר/י ערך עבור p (פרמטר ראשון)",
-#     min_value=0.1,
-#     max_value=10.0,
-#     value=default_p,
-#     step=0.1,
-#     help="ערך זה ישפיע על קנה המידה של הגרפים."
-# )
-
-# r_value = st.slider(
-#     "בחר/י ערך עבור r (פרמטר שני)",
-#     min_value=0.1,
-#     max_value=10.0,
-#     value=default_r,
-#     step=0.1,
-#     help="ערך זה ישפיע גם הוא על צורת הגרפים, ומשמש לחלוקה."
-# )
-
-# # שימוש ב-st.cache_data כדי למנוע הרצה מחדש של החישוב והגרפים בכל פעם שנעשה שינוי לא רלוונטי
-# # הפונקציה תרוץ מחדש רק כאשר p_value או r_value משתנים
-# @st.cache_data
-# def run_and_cache_calculation(p, r):
-#     """
-#     עוטף את פונקציית החישוב כדי לאפשר Streamlit caching.
-#     """
-#     return perform_calculation_and_generate_plots(p, r)
-
-# # כפתור הרצה
-# if st.button("🚀 הרץ/י חישוב", type="primary"):
-#     # ויזואליזציה של תהליך
-#     with st.spinner('מבצע חישוב, מייצר יומן תהליך ויוצר גרפים...'):
-#         try:
-#             # בדיקה למניעת חלוקה באפס ב-r
-#             if abs(r_value) < 0.001: # אם r קרוב מאוד לאפס
-#                 st.error("🚫 שגיאה: הפרמטר 'r' קרוב לאפס. אנא בחר/י ערך שונה מ-0 כדי למנוע חלוקה באפס.")
-#             else:
-#                 # הרצת החישוב דרך הפונקציה המכוסה ב-cache
-#                 logs, svg_plots, final_result = run_and_cache_calculation(p_value, r_value)
-
-#                 # 2. חלון המציג את פלט תהליך החישוב (print statements)
-#                 st.subheader("📝 יומן תהליך החישוב:")
-#                 st.code(logs, language='text') # הצגת הפלטים כקוד טקסט רגיל
-
-#                 st.success(f"✅ החישוב הסתיים בהצלחה! התוצאה הסופית שחושבה היא: **{final_result:.2f}**")
-                
-#                 # 3. סלייד-שואו של תמונות SVG כתוצאה מהחישוב
-#                 if svg_plots:
-#                     st.subheader("📈 גרפים כתוצאה מהחישוב:")
-#                     num_svgs = len(svg_plots)
-                    
-#                     # סליידר לבחירת הגרף המוצג
-#                     plot_index = st.slider(
-#                         "בחר/י גרף לצפייה",
-#                         min_value=0,
-#                         max_value=num_svgs - 1,
-#                         value=0, # גרף ראשון כברירת מחדל
-#                         step=1,
-#                         # format_func=lambda x: f"גרף {x+1} מתוך {num_svgs}" # תצוגה ידידותית
-#                     )
-                    
-#                     # הצגת ה-SVG הנבחר באמצעות st.components.v1.html
-#                     # זה מאפשר להציג מחרוזות HTML/SVG גולמיות
-#                     components.html(
-#                         svg_plots[plot_index],
-#                         height=500, # גובה קבוע לאזור הגרף
-#                         scrolling=False # מונע גלילה בתוך אזור ה-HTML
-#                     )
-#                     st.info(f"הגרף המוצג כרגע הוא גרף מספר {plot_index + 1}.")
-#                 else:
-#                     st.info("ℹ️ לא נוצרו גרפים בחישוב זה.")
-
-#         except Exception as e:
-#             st.error(f"❌ אירעה שגיאה בלתי צפויה במהלך ההרצה: {e}")
-
-# st.markdown("---")
-# st.markdown("""
-# <div style="text-align: center; color: #888; font-size: 0.9em;">
-#   אפליקציה זו פותחה באמצעות Streamlit Python.
-#   <br>
-#   ניתן למצוא את קוד המקור ב-GitHub (קישור יתווסף לאחר פריסה).
-# </div>
-# """, unsafe_allow_html=True)
-
-
-# # def calculate_result(p, r):
-# #     print(f"p + r = {float(p) + float(r)}")
-# #     return p + r
-
-# st.title("אפליקציה קטנה עם בחירת פרמטרים")
-# st.write("בחר/י את הפרמטרים p ו-r כדי להריץ את החישוב.")
-
-# # יצירת מחוונים (sliders) לבחירת פרמטרים
-# p_value = st.slider("בחר/י ערך עבור p", min_value=0.0, max_value=1.0, value=0.5, step=0.05)
-# r_value = st.slider("בחר/י ערך עבור r", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
-# N_value = st.slider("בחר/י ערך עבור N", min_value=8, max_value=80, value=12, step=4)
-
-# # כפתור להרצת הקוד
-# if st.button("הרץ/י חישוב"):
-#     # הרצת פונקציית הפייתון עם הפרמטרים שנבחרו
-#     try:
-#         result = calculate_result(N_value, p_value, r_value)
-#         st.success(f"החישוב הסתיים בהצלחה! התוצאה היא: {result:.2f}")
-#     except ZeroDivisionError:
-#         st.error("שגיאה: לא ניתן לחלק באפס! ודא/י ש-r אינו 0.")
-#     except Exception as e:
-#         st.error(f"אירעה שגיאה: {e}")
-
-# # ניתן להוסיף כאן גם גרפים, טבלאות ועוד תוצאות.
-# st.subheader("אודות האפליקציה")
-# st.info("אפליקציה זו מדגימה כיצד ניתן ליצור ממשק פשוט להרצת קוד פייתון עם פרמטרים מוגדרים מראש.")
 
