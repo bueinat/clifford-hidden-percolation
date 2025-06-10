@@ -9,3 +9,4 @@ math
 pandas
 networkx
 tqdm
+streamlit
